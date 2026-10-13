@@ -7,14 +7,14 @@ Biblioteca MicroPython para ler e configurar o contador TMAC via SPI.
 No computador, com o [`mpremote`](https://docs.micropython.org/en/latest/reference/mpremote.html):
 
 ```bash
-mpremote mip install github:SEU_USUARIO/tmac_ds
+mpremote mip install github:catuta0/tmac_ds
 ```
 
 Ou diretamente na placa (com Wi-Fi ligado):
 
 ```python
 import mip
-mip.install("github:SEU_USUARIO/tmac_ds")
+mip.install("github:catuta0/tmac_ds")
 ```
 
 ## Uso

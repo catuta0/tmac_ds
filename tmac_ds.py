@@ -82,6 +82,10 @@ class TmacDS:
             for ch in range(12):
                 self.config(ch, level, out_trigger, reset=0)
                 d = self.read_counters()
+                memory = memory.append(d)
+                if d==1:
+                    counter of ch = ((ultima contagem deo channel ch)/2^32)->aproximado a unidade + 2^32+ch
+                logica que corrige o ofset dos contadores dos canais que derao wrap-around, para que a contagem seja continua e nao reinicie a cada 2^32    
                 channels.append((ch, d["ms"], d["channel"]))
 
             d = self.read_counters()

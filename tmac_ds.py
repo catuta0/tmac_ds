@@ -63,3 +63,22 @@ class TmacDS:
             "ovf_time": (f >> 1) & 1,
             "valid":    f & 1,
         }
+
+    def start_aquisition(level, out_trigger=0, freq_aquisition):
+        TmacDS.config(0, level, out_trigger, 1)
+        TmacDS.read_counters() #aqui tenho de estrair so o counter do chanal e o respectivo tempo
+        i=1
+        priodo = 1/freq_aquisition
+        while (True):
+            tic
+            for i in range[1:11]:
+                TmacDS.config(i, level, out_trigger, 0)
+                TmacDS.read_counters() #aqui tenho de estrair so o counter do chanal e o respectivo tempo
+                i+=1
+            TmacDS.read_counters() #aqui tenho de extrair os counters dos triggers e dos respectivos tempos
+            tac
+            tempo de ler counters 
+            delay(priodo-tempo de ler counters)
+
+        
+

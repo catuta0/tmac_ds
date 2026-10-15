@@ -10,6 +10,7 @@ Frame de leitura, 18 bytes:
 """
 
 from machine import Pin, SPI
+import time
 
 __version__ = "0.1.0"
 
@@ -64,21 +65,31 @@ class TmacDS:
             "valid":    f & 1,
         }
 
-    def start_aquisition(level, out_trigger=0, freq_aquisition):
-        TmacDS.config(0, level, out_trigger, 1)
-        TmacDS.read_counters() #aqui tenho de estrair so o counter do chanal e o respectivo tempo
-        i=1
-        priodo = 1/freq_aquisition
-        while (True):
-            tic
-            for i in range[1:11]:
-                TmacDS.config(i, level, out_trigger, 0)
-                TmacDS.read_counters() #aqui tenho de estrair so o counter do chanal e o respectivo tempo
-                i+=1
-            TmacDS.read_counters() #aqui tenho de extrair os counters dos triggers e dos respectivos tempos
-            tac
-            tempo de ler counters 
-            delay(priodo-tempo de ler counters)
+    def start_aquisition(self, level, out_trigger=0, freq_aquisition=1):
+        """Reset, depois um varrimento dos 12 canais repetido a freq_aquisition.
 
-        
+        Gerador: cada iteracao devolve um dict com
+            "channels": lista de (canal, ms, contagem), uma entrada por canal
+            "triggers": (ms, trigger1, trigger2) de uma leitura final
+        """
+        period_ms = int(1000 / freq_aquisition)
+        self.config(0, level, out_trigger, reset=1)
+
+        while True:
+            start = time.ticks_ms()
+
+            channels = []
+            for ch in range(12):
+                self.config(ch, level, out_trigger, reset=0)
+                d = self.read_counters()
+                channels.append((ch, d["ms"], d["channel"]))
+
+            d = self.read_counters()
+            triggers = (d["ms"], d["trigger1"], d["trigger2"])
+
+            yield {"channels": channels, "triggers": triggers}
+
+            elapsed = time.ticks_diff(time.ticks_ms(), start)
+            if elapsed < period_ms:
+                time.sleep_ms(period_ms - elapsed)
 

@@ -173,7 +173,8 @@ void tmac_read_counters_bb(tmac_counters_t *c)
 }
 
 /* Reset, depois varrimentos dos 12 canais a freq_aquisition, uma linha CSV
-   por leitura para o stdout. Para quando chega um caracter pelo serial.
+   por leitura para o stdout, ou seja para o monitor serial. Nao termina: le-se
+   no monitor e para-se com um reset da placa.
    Todas as contagens sao continuas, com 2^32 somado por cada volta. */
 static void acquire(int level, int out_trigger, int freq_aquisition, bool bb)
 {
@@ -186,7 +187,7 @@ static void acquire(int level, int out_trigger, int freq_aquisition, bool bb)
     if (bb) tmac_config_bb(0, level, out_trigger, 1);
     else    tmac_config(0, level, out_trigger, 1);
 
-    while (getchar_timeout_us(0) == PICO_ERROR_TIMEOUT) {
+    while (true) {
         uint32_t start = to_ms_since_boot(get_absolute_time());
 
         for (int ch = 0; ch < 12; ch++) {
@@ -213,7 +214,6 @@ static void acquire(int level, int out_trigger, int freq_aquisition, bool bb)
         uint32_t elapsed = to_ms_since_boot(get_absolute_time()) - start;
         if (elapsed < period_ms) sleep_ms(period_ms - elapsed);
     }
-    printf("parado\n");
 }
 
 void tmac_start_aquisition(int level, int out_trigger, int freq_aquisition)

@@ -28,8 +28,8 @@ void tmac_init(spi_inst_t *spi, uint sck, uint mosi, uint miso, uint cs,
 /* Monta a palavra e alinha os 10 bits a esquerda nos dois bytes. Os seis bits
    de preenchimento tem de ficar a zero, senao a FPGA le um deles como bit de
    arranque de outra palavra. */
-static void pack_word(int channel, int level, int out_trigger, int reset,
-                      uint8_t *tx)
+static void pack_word(int channel, int level, tmac_out_t out_trigger,
+                      tmac_reset_t reset, uint8_t *tx)
 {
     uint16_t word = (1u << 9)
                   | ((uint16_t)(reset       ? 1 : 0) << 8)
@@ -41,7 +41,8 @@ static void pack_word(int channel, int level, int out_trigger, int reset,
     tx[1] = (uint8_t)((word << 6) & 0xFF);
 }
 
-void tmac_config(int channel, int level, int out_trigger, int reset)
+void tmac_config(int channel, int level, tmac_out_t out_trigger,
+                 tmac_reset_t reset)
 {
     uint8_t tx[2];
     pack_word(channel, level, out_trigger, reset, tx);
@@ -53,7 +54,7 @@ void tmac_config(int channel, int level, int out_trigger, int reset)
 
 void tmac_reset(int channel, int level)
 {
-    tmac_config(channel, level, 0, 1);
+    tmac_config(channel, level, TMAC_MAJORITY, TMAC_RESET);
 }
 
 void tmac_read_raw(uint8_t *rx)
@@ -111,7 +112,8 @@ static uint8_t bb_xfer(uint8_t tx)
     return rx;
 }
 
-void tmac_config_bb(int channel, int level, int out_trigger, int reset)
+void tmac_config_bb(int channel, int level, tmac_out_t out_trigger,
+                    tmac_reset_t reset)
 {
     uint8_t tx[2];
     pack_word(channel, level, out_trigger, reset, tx);
@@ -124,7 +126,7 @@ void tmac_config_bb(int channel, int level, int out_trigger, int reset)
 
 void tmac_reset_bb(int channel, int level)
 {
-    tmac_config_bb(channel, level, 0, 1);
+    tmac_config_bb(channel, level, TMAC_MAJORITY, TMAC_RESET);
 }
 
 void tmac_read_raw_bb(uint8_t *rx)
@@ -176,7 +178,8 @@ void tmac_read_counters_bb(tmac_counters_t *c)
    por leitura para o stdout, ou seja para o monitor serial. Nao termina: le-se
    no monitor e para-se com um reset da placa.
    Todas as contagens sao continuas, com 2^32 somado por cada volta. */
-static void acquire(int level, int out_trigger, int freq_aquisition, bool bb)
+static void acquire(int level, tmac_out_t out_trigger, int freq_aquisition,
+                    bool bb)
 {
     uint32_t period_ms = 1000u / (freq_aquisition > 0 ? freq_aquisition : 1);
     uint32_t wraps[12] = {0};
@@ -184,16 +187,16 @@ static void acquire(int level, int out_trigger, int freq_aquisition, bool bb)
     tmac_counters_t c;
 
     printf("ms,ch,count,trigger1,trigger2\n");
-    if (bb) tmac_config_bb(0, level, out_trigger, 1);
-    else    tmac_config(0, level, out_trigger, 1);
+    if (bb) tmac_config_bb(0, level, out_trigger, TMAC_RESET);
+    else    tmac_config(0, level, out_trigger, TMAC_RESET);
 
     while (true) {
         uint32_t start = to_ms_since_boot(get_absolute_time());
 
         for (int ch = 0; ch < 12; ch++) {
-            if (bb) { tmac_config_bb(ch, level, out_trigger, 0);
+            if (bb) { tmac_config_bb(ch, level, out_trigger, TMAC_KEEP_COUNT);
                       tmac_read_counters_bb(&c); }
-            else    { tmac_config(ch, level, out_trigger, 0);
+            else    { tmac_config(ch, level, out_trigger, TMAC_KEEP_COUNT);
                       tmac_read_counters(&c); }
 
             /* A FPGA limpa a flag do canal apenas na leitura do canal
@@ -206,9 +209,9 @@ static void acquire(int level, int out_trigger, int freq_aquisition, bool bb)
 
             printf("%lu,%d,%llu,%llu,%llu\n",
                    (unsigned long)c.ms, ch,
-                   ((uint64_t)wraps[ch] << 32) + c.channel,
-                   (wraps_t1 << 32) + c.trigger1,
-                   (wraps_t2 << 32) + c.trigger2);
+                   (unsigned long long)(((uint64_t)wraps[ch] << 32) + c.channel),
+                   (unsigned long long)((wraps_t1 << 32) + c.trigger1),
+                   (unsigned long long)((wraps_t2 << 32) + c.trigger2));
         }
 
         uint32_t elapsed = to_ms_since_boot(get_absolute_time()) - start;
@@ -216,12 +219,14 @@ static void acquire(int level, int out_trigger, int freq_aquisition, bool bb)
     }
 }
 
-void tmac_start_aquisition(int level, int out_trigger, int freq_aquisition)
+void tmac_start_aquisition(int level, tmac_out_t out_trigger,
+                           int freq_aquisition)
 {
     acquire(level, out_trigger, freq_aquisition, false);
 }
 
-void tmac_start_aquisition_bb(int level, int out_trigger, int freq_aquisition)
+void tmac_start_aquisition_bb(int level, tmac_out_t out_trigger,
+                              int freq_aquisition)
 {
     acquire(level, out_trigger, freq_aquisition, true);
 }

@@ -22,6 +22,19 @@
 
 #define TMAC_FRAME_LEN 18
 
+/* out_trigger: o que chega ao pino out. Os dois contadores de trigger contam
+   sempre, independentemente desta escolha. */
+typedef enum {
+    TMAC_MAJORITY  = 0,
+    TMAC_ADJACENCY = 1
+} tmac_out_t;
+
+/* reset: zera os 12 contadores de canal, os 2 de trigger e a base de tempo. */
+typedef enum {
+    TMAC_KEEP_COUNT = 0,
+    TMAC_RESET      = 1
+} tmac_reset_t;
+
 typedef struct {
     uint32_t trigger1;
     uint32_t trigger2;
@@ -37,21 +50,25 @@ typedef struct {
 /* ---- SPI de hardware ---- */
 void tmac_init(spi_inst_t *spi, uint sck, uint mosi, uint miso, uint cs,
                uint baudrate);
-void tmac_config(int channel, int level, int out_trigger, int reset);
+void tmac_config(int channel, int level, tmac_out_t out_trigger,
+                 tmac_reset_t reset);
 void tmac_reset(int channel, int level);
 void tmac_read_raw(uint8_t *rx);
 void tmac_read_counters(tmac_counters_t *c);
-void tmac_start_aquisition(int level, int out_trigger, int freq_aquisition);
+void tmac_start_aquisition(int level, tmac_out_t out_trigger,
+                           int freq_aquisition);
 
 /* ---- bit banging ---- */
 /* half_period_us: metade do periodo de SCK. 0 vai o mais rapido que os GPIO
    deixam, 1 da cerca de 500 kHz. O limite da FPGA e 25 MHz, nao se atinge. */
 void tmac_init_bb(uint sck, uint mosi, uint miso, uint cs,
                   uint half_period_us);
-void tmac_config_bb(int channel, int level, int out_trigger, int reset);
+void tmac_config_bb(int channel, int level, tmac_out_t out_trigger,
+                    tmac_reset_t reset);
 void tmac_reset_bb(int channel, int level);
 void tmac_read_raw_bb(uint8_t *rx);
 void tmac_read_counters_bb(tmac_counters_t *c);
-void tmac_start_aquisition_bb(int level, int out_trigger, int freq_aquisition);
+void tmac_start_aquisition_bb(int level, tmac_out_t out_trigger,
+                              int freq_aquisition);
 
 #endif

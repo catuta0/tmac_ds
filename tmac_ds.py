@@ -16,6 +16,15 @@ __version__ = "0.1.0"
 
 FRAME_LEN = 18
 
+# out_trigger: o que chega ao pino out. Os dois contadores de trigger contam
+# sempre, independentemente desta escolha.
+MAJORITY = 0
+ADJACENCY = 1
+
+# reset: zera os 12 contadores de canal, os 2 de trigger e a base de tempo.
+KEEP_COUNT = 0
+RESET = 1
+
 
 class TmacDS:
     def __init__(self, spi=None, cs=5, spi_id=0, baudrate=1_000_000,
@@ -27,7 +36,7 @@ class TmacDS:
         self.cs = cs if isinstance(cs, Pin) else Pin(cs, Pin.OUT, value=1)
         self.cs.value(1)
 
-    def config(self, channel, level, out_trigger=0, reset=0):
+    def config(self, channel, level, out_trigger=MAJORITY, reset=KEEP_COUNT):
         if not 0 <= channel <= 15:
             raise ValueError("channel deve estar entre 0 e 15")
         if not 0 <= level <= 7:
@@ -41,7 +50,7 @@ class TmacDS:
             self.cs.value(1)
 
     def reset(self, channel=0, level=0):
-        self.config(channel, level, reset=1)
+        self.config(channel, level, reset=RESET)
 
     def read_raw(self):
         self.cs.value(0)
@@ -65,7 +74,7 @@ class TmacDS:
             "valid":    f & 1,
         }
 
-    def start_aquisition(self, level, out_trigger=0, freq_aquisition=1,
+    def start_aquisition(self, level, out_trigger=MAJORITY, freq_aquisition=1,
                          filename="tmac.csv"):
         """Reset, depois varrimentos dos 12 canais a freq_aquisition, gravados
         em filename. Para com Ctrl-C.
@@ -80,14 +89,14 @@ class TmacDS:
 
         f = open(filename, "w")
         f.write("ms,ch,count,trigger1,trigger2\n")
-        self.config(0, level, out_trigger, reset=1)
+        self.config(0, level, out_trigger, reset=RESET)
 
         try:
             while True:
                 start = time.ticks_ms()
 
                 for ch in range(12):
-                    self.config(ch, level, out_trigger, reset=0)
+                    self.config(ch, level, out_trigger, reset=KEEP_COUNT)
                     d = self.read_counters()
                     # A FPGA limpa a flag do canal apenas na leitura do canal
                     # selecionado, por isso olhamos so para o bit deste canal.

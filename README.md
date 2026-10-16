@@ -67,14 +67,28 @@ tmac = TmacDS(spi=spi, cs=Pin(5, Pin.OUT))
 
 | Método | Descrição |
 |---|---|
-| `config(channel, level, out_trigger=0, reset=0)` | Envia a palavra de configuração (canal 0–15, nível 0–7) |
-| `reset(channel=0, level=0)` | Atalho para `config(..., reset=1)` |
+| `config(channel, level, out_trigger=MAJORITY, reset=KEEP_COUNT)` | Envia a palavra de configuração (canal 0–15, nível 0–7) |
+| `reset(channel=0, level=0)` | Atalho para `config(..., reset=RESET)` |
 | `read_counters()` | Lê o frame de 18 bytes e devolve um `dict` |
 | `read_raw()` | Devolve os 18 bytes crus |
-| `start_aquisition(level, out_trigger=0, freq_aquisition=1, filename="tmac.csv")` | Reset, depois varrimentos dos 12 canais gravados em CSV na flash da placa. Para com Ctrl-C |
+| `start_aquisition(level, out_trigger=MAJORITY, freq_aquisition=1, filename="tmac.csv")` | Reset, depois varrimentos dos 12 canais gravados em CSV na flash da placa. Para com Ctrl-C |
 
 Campos devolvidos por `read_counters()`: `trigger1`, `trigger2`, `channel`, `ms`,
 `ovf_t1`, `ovf_t2`, `ovf_ch` (12 bits, um por canal), `ovf_time`, `valid`.
+
+Constantes do módulo, para não passar `0` e `1` à mão:
+
+| Constante | Parâmetro | Significado |
+|---|---|---|
+| `MAJORITY` | `out_trigger` | o pino out segue o trigger de maioria |
+| `ADJACENCY` | `out_trigger` | o pino out segue o trigger de adjacência |
+| `KEEP_COUNT` | `reset` | deixa os contadores a correr |
+| `RESET` | `reset` | zera os 12 contadores de canal, os 2 de trigger e a base de tempo |
+
+Os dois contadores de trigger contam sempre, qualquer que seja o `out_trigger`:
+essa escolha só decide qual das duas condições chega ao pino físico. E como o
+valor das constantes é o próprio bit, código antigo que passasse `0` e `1`
+continua a funcionar.
 
 ---
 
@@ -124,7 +138,7 @@ int main(void)
     stdio_init_all();
     tmac_init(spi0, 2, 3, 4, 5, 1000000);   // SCK, MOSI, MISO, CS, 1 MHz
 
-    tmac_config(0, 3, 0, 1);                // canal 0, level 3, majority, reset
+    tmac_config(0, 3, TMAC_MAJORITY, TMAC_RESET);   // canal 0, level 3
 
     while (true) {
         tmac_read_counters(&c);
@@ -143,10 +157,24 @@ int main(void)
 |---|---|
 | `tmac_init(spi, sck, mosi, miso, cs, baudrate)` | SPI de hardware. O tecto da FPGA é 25 MHz |
 | `tmac_config(channel, level, out_trigger, reset)` | Envia a palavra de configuração |
-| `tmac_reset(channel, level)` | Atalho para `tmac_config(..., 1)` |
+| `tmac_reset(channel, level)` | Atalho para `tmac_config(..., TMAC_RESET)` |
 | `tmac_read_raw(rx)` | Os 18 bytes crus para `rx` |
 | `tmac_read_counters(&c)` | Preenche um `tmac_counters_t` |
 | `tmac_start_aquisition(level, out_trigger, freq_aquisition)` | Reset, depois varrimentos dos 12 canais em CSV para o `stdout`. Não termina |
+
+Os dois últimos parâmetros do `tmac_config` são `enum`, não inteiros:
+
+| Constante | Tipo | Significado |
+|---|---|---|
+| `TMAC_MAJORITY` | `tmac_out_t` | o pino out segue o trigger de maioria |
+| `TMAC_ADJACENCY` | `tmac_out_t` | o pino out segue o trigger de adjacência |
+| `TMAC_KEEP_COUNT` | `tmac_reset_t` | deixa os contadores a correr |
+| `TMAC_RESET` | `tmac_reset_t` | zera os 12 contadores de canal, os 2 de trigger e a base de tempo |
+
+Os dois contadores de trigger contam sempre, qualquer que seja o `out_trigger`:
+essa escolha só decide qual das duas condições chega ao pino físico. O valor de
+cada constante é o próprio bit da palavra, logo código que passasse `0` e `1`
+continua a compilar.
 
 Cada função que toca no bus tem um gémeo com sufixo **`_bb`** que faz o SPI em
 software: `tmac_init_bb(sck, mosi, miso, cs, half_period_us)`,
@@ -188,7 +216,7 @@ tmac_init_bb(22, 0, 1, 26, 1);      // SCK, MOSI, MISO, CS, meio periodo em us
 // em run_cmd(), um comando novo: C<canal> le os contadores desse canal
 case 'C': {
     tmac_counters_t c;
-    tmac_config_bb(atoi(buf+1), 3, 0, 0);
+    tmac_config_bb(atoi(buf+1), 3, TMAC_MAJORITY, TMAC_KEEP_COUNT);
     tmac_read_counters_bb(&c);
     printf("%lu %lu %lu %lu\n", (unsigned long)c.ms,
            (unsigned long)c.trigger1, (unsigned long)c.trigger2,

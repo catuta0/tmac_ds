@@ -1,8 +1,9 @@
 # tmac_ds
 
-Biblioteca para ler e configurar o contador TMAC via SPI, em duas versões que
-falam o mesmo protocolo: **MicroPython** (`tmac_ds.py`) e **C com o Pico SDK**
-(`c/`).
+Biblioteca para ler e configurar o contador TMAC via SPI, em três versões que
+falam o mesmo protocolo: **MicroPython** (`tmac_ds.py`), **Arduino IDE**
+(`src/`) e **C com o Pico SDK** (`c/`). Cada uma instala-se e usa-se
+independentemente das outras.
 
 Protocolo, igual nas duas:
 
@@ -71,7 +72,7 @@ tmac = TmacDS(spi=spi, cs=Pin(5, Pin.OUT))
 | `reset(channel=0, level=0)` | Atalho para `config(..., reset=RESET)` |
 | `read_counters()` | Lê o frame de 18 bytes e devolve um `dict` |
 | `read_raw()` | Devolve os 18 bytes crus |
-| `start_aquisition(level, out_trigger=MAJORITY, freq_aquisition=1, filename="tmac.csv")` | Reset, depois varrimentos dos 12 canais gravados em CSV na flash da placa. Para com Ctrl-C |
+| `start_aquisition(level, out_trigger=MAJORITY, freq_aquisition=1, filename="tmac.csv")` | Conveniência para testes. Reset, depois varrimentos dos 12 canais gravados em CSV na flash da placa. Para com Ctrl-C |
 
 Campos devolvidos por `read_counters()`: `trigger1`, `trigger2`, `channel`, `ms`,
 `ovf_t1`, `ovf_t2`, `ovf_ch` (12 bits, um por canal), `ovf_time`, `valid`.
@@ -89,6 +90,76 @@ Os dois contadores de trigger contam sempre, qualquer que seja o `out_trigger`:
 essa escolha só decide qual das duas condições chega ao pino físico. E como o
 valor das constantes é o próprio bit, código antigo que passasse `0` e `1`
 continua a funcionar.
+
+---
+
+# Arduino IDE
+
+A raiz do repositório é a biblioteca Arduino, com as fontes em `src/`.
+
+## Instalação
+
+Clonar diretamente para a pasta de bibliotecas do Arduino:
+
+```bash
+cd ~/Documents/Arduino/libraries
+git clone https://github.com/catuta0/tmac_ds
+```
+
+Ou, sem git: descarregar o zip do GitHub e usar **Sketch → Include Library →
+Add .ZIP Library**.
+
+Reinicia o IDE e o exemplo aparece em **File → Examples → tmac_ds →
+tmac_basic**.
+
+## Uso
+
+```cpp
+#include <tmac_ds.h>
+
+TmacDS tmac;
+
+void setup()
+{
+    Serial.begin(115200);
+    tmac.begin(5, 18, 19, 23);          // CS, SCK, MISO, MOSI (ESP32)
+    tmac.config(0, 3, TMAC_MAJORITY, TMAC_RESET);
+}
+
+void loop()
+{
+    TmacCounters c;
+    tmac.readCounters(c);
+    if (c.valid) Serial.println(c.trigger1);
+    delay(1000);
+}
+```
+
+Em placas cujo core não deixa escolher os pinos de SPI (AVR, por exemplo), usa
+só `tmac.begin(cs)` e liga aos pinos de SPI por omissão da placa.
+
+## API
+
+| Método | Descrição |
+|---|---|
+| `begin(cs, hz = 1000000)` | Pinos de SPI por omissão da placa |
+| `begin(cs, sck, miso, mosi, hz = 1000000)` | Pinos escolhidos. Só em ESP32, ESP8266 e RP2040 |
+| `config(channel, level, out = TMAC_MAJORITY, reset = TMAC_NO_RESET)` | Envia a palavra de configuração |
+| `reset(channel = 0, level = 0)` | Atalho para `config(..., TMAC_RESET)` |
+| `readRaw(rx)` | Os 18 bytes crus para `rx` |
+| `readCounters(c)` | Preenche um `TmacCounters` |
+| `startAquisition(level, out, freqHz)` | Reset, depois varrimentos dos 12 canais em CSV para o `Serial`. Não termina |
+
+Campos de `TmacCounters`: `trigger1`, `trigger2`, `channel`, `ms`, `ovfCh`
+(12 bits, um por canal), `ovfT1`, `ovfT2`, `ovfTime`, `valid`.
+
+As constantes são `TMAC_MAJORITY` e `TMAC_ADJACENCY` para o `out`, e
+`TMAC_NO_RESET` e `TMAC_RESET` para o `reset`, com o mesmo significado da
+versão C. Aqui são `enum` com tipo, logo o IDE propõe só os valores válidos de
+cada parâmetro.
+
+Não há variantes `_bb`: a biblioteca `SPI` do Arduino já resolve o bus, e nas
+placas onde interessa os pinos são escolhidos no `begin`.
 
 ---
 
@@ -160,7 +231,7 @@ int main(void)
 | `tmac_reset(channel, level)` | Atalho para `tmac_config(..., TMAC_RESET)` |
 | `tmac_read_raw(rx)` | Os 18 bytes crus para `rx` |
 | `tmac_read_counters(&c)` | Preenche um `tmac_counters_t` |
-| `tmac_start_aquisition(level, out_trigger, freq_aquisition)` | Reset, depois varrimentos dos 12 canais em CSV para o `stdout`. Não termina |
+| `tmac_start_aquisition(level, out_trigger, freq_aquisition)` | Conveniência para testes. Reset, depois varrimentos dos 12 canais em CSV para o `stdout`. Não termina |
 
 Os dois últimos parâmetros do `tmac_config` são `enum`, não inteiros:
 

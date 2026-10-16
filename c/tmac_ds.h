@@ -31,8 +31,8 @@ typedef enum {
 
 /* reset: zera os 12 contadores de canal, os 2 de trigger e a base de tempo. */
 typedef enum {
-    TMAC_KEEP_COUNT = 0,
-    TMAC_RESET      = 1
+    TMAC_NO_RESET = 0,
+    TMAC_RESET    = 1
 } tmac_reset_t;
 
 typedef struct {

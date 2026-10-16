@@ -22,7 +22,7 @@ MAJORITY = 0
 ADJACENCY = 1
 
 # reset: zera os 12 contadores de canal, os 2 de trigger e a base de tempo.
-KEEP_COUNT = 0
+NO_RESET = 0
 RESET = 1
 
 
@@ -36,7 +36,7 @@ class TmacDS:
         self.cs = cs if isinstance(cs, Pin) else Pin(cs, Pin.OUT, value=1)
         self.cs.value(1)
 
-    def config(self, channel, level, out_trigger=MAJORITY, reset=KEEP_COUNT):
+    def config(self, channel, level, out_trigger=MAJORITY, reset=NO_RESET):
         if not 0 <= channel <= 15:
             raise ValueError("channel deve estar entre 0 e 15")
         if not 0 <= level <= 7:
@@ -96,7 +96,7 @@ class TmacDS:
                 start = time.ticks_ms()
 
                 for ch in range(12):
-                    self.config(ch, level, out_trigger, reset=KEEP_COUNT)
+                    self.config(ch, level, out_trigger, reset=NO_RESET)
                     d = self.read_counters()
                     # A FPGA limpa a flag do canal apenas na leitura do canal
                     # selecionado, por isso olhamos so para o bit deste canal.

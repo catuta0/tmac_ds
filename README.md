@@ -67,7 +67,7 @@ tmac = TmacDS(spi=spi, cs=Pin(5, Pin.OUT))
 
 | Método | Descrição |
 |---|---|
-| `config(channel, level, out_trigger=MAJORITY, reset=KEEP_COUNT)` | Envia a palavra de configuração (canal 0–15, nível 0–7) |
+| `config(channel, level, out_trigger=MAJORITY, reset=NO_RESET)` | Envia a palavra de configuração (canal 0–15, nível 0–7) |
 | `reset(channel=0, level=0)` | Atalho para `config(..., reset=RESET)` |
 | `read_counters()` | Lê o frame de 18 bytes e devolve um `dict` |
 | `read_raw()` | Devolve os 18 bytes crus |
@@ -82,7 +82,7 @@ Constantes do módulo, para não passar `0` e `1` à mão:
 |---|---|---|
 | `MAJORITY` | `out_trigger` | o pino out segue o trigger de maioria |
 | `ADJACENCY` | `out_trigger` | o pino out segue o trigger de adjacência |
-| `KEEP_COUNT` | `reset` | deixa os contadores a correr |
+| `NO_RESET` | `reset` | deixa os contadores a correr |
 | `RESET` | `reset` | zera os 12 contadores de canal, os 2 de trigger e a base de tempo |
 
 Os dois contadores de trigger contam sempre, qualquer que seja o `out_trigger`:
@@ -168,7 +168,7 @@ Os dois últimos parâmetros do `tmac_config` são `enum`, não inteiros:
 |---|---|---|
 | `TMAC_MAJORITY` | `tmac_out_t` | o pino out segue o trigger de maioria |
 | `TMAC_ADJACENCY` | `tmac_out_t` | o pino out segue o trigger de adjacência |
-| `TMAC_KEEP_COUNT` | `tmac_reset_t` | deixa os contadores a correr |
+| `TMAC_NO_RESET` | `tmac_reset_t` | deixa os contadores a correr |
 | `TMAC_RESET` | `tmac_reset_t` | zera os 12 contadores de canal, os 2 de trigger e a base de tempo |
 
 Os dois contadores de trigger contam sempre, qualquer que seja o `out_trigger`:
@@ -216,7 +216,7 @@ tmac_init_bb(22, 0, 1, 26, 1);      // SCK, MOSI, MISO, CS, meio periodo em us
 // em run_cmd(), um comando novo: C<canal> le os contadores desse canal
 case 'C': {
     tmac_counters_t c;
-    tmac_config_bb(atoi(buf+1), 3, TMAC_MAJORITY, TMAC_KEEP_COUNT);
+    tmac_config_bb(atoi(buf+1), 3, TMAC_MAJORITY, TMAC_NO_RESET);
     tmac_read_counters_bb(&c);
     printf("%lu %lu %lu %lu\n", (unsigned long)c.ms,
            (unsigned long)c.trigger1, (unsigned long)c.trigger2,

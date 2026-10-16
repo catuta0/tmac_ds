@@ -194,9 +194,9 @@ static void acquire(int level, tmac_out_t out_trigger, int freq_aquisition,
         uint32_t start = to_ms_since_boot(get_absolute_time());
 
         for (int ch = 0; ch < 12; ch++) {
-            if (bb) { tmac_config_bb(ch, level, out_trigger, TMAC_KEEP_COUNT);
+            if (bb) { tmac_config_bb(ch, level, out_trigger, TMAC_NO_RESET);
                       tmac_read_counters_bb(&c); }
-            else    { tmac_config(ch, level, out_trigger, TMAC_KEEP_COUNT);
+            else    { tmac_config(ch, level, out_trigger, TMAC_NO_RESET);
                       tmac_read_counters(&c); }
 
             /* A FPGA limpa a flag do canal apenas na leitura do canal

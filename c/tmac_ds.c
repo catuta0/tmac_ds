@@ -2,7 +2,7 @@
 #include "tmac_ds.h"
 #include "pico/stdlib.h"
 
-/* ================= SPI de hardware ================= */
+/* ================= hardware SPI ================= */
 
 static spi_inst_t *tmac_spi;
 static uint        tmac_cs;
@@ -19,15 +19,15 @@ void tmac_init(spi_inst_t *spi, uint sck, uint mosi, uint miso, uint cs,
     gpio_set_function(mosi, GPIO_FUNC_SPI);
     gpio_set_function(miso, GPIO_FUNC_SPI);
 
-    /* CS por software: uma transacao, um pulso. */
+    /* Chip select driven by software: one transaction, one pulse. */
     gpio_init(cs);
     gpio_set_dir(cs, GPIO_OUT);
     gpio_put(cs, 1);
 }
 
-/* Monta a palavra e alinha os 10 bits a esquerda nos dois bytes. Os seis bits
-   de preenchimento tem de ficar a zero, senao a FPGA le um deles como bit de
-   arranque de outra palavra. */
+/* Build the word and left align its 10 bits inside the two bytes. The six
+   padding bits must be zero, otherwise the FPGA reads one of them as the start
+   bit of another word. */
 static void pack_word(int channel, int level, tmac_out_t out_trigger,
                       tmac_reset_t reset, uint8_t *tx)
 {
@@ -60,8 +60,8 @@ void tmac_reset(int channel, int level)
 void tmac_read_raw(uint8_t *rx)
 {
     gpio_put(tmac_cs, 0);
-    /* O 0x00 repetido mantem o MOSI em baixo: um 1 ali seria lido como o
-       arranque de uma palavra de configuracao. */
+    /* The repeated 0x00 holds MOSI low: a one there would be taken as the
+       start of a configuration word. */
     spi_read_blocking(tmac_spi, 0x00, rx, TMAC_FRAME_LEN);
     gpio_put(tmac_cs, 1);
 }
@@ -84,7 +84,7 @@ void tmac_init_bb(uint sck, uint mosi, uint miso, uint cs,
     gpio_init(cs);   gpio_set_dir(cs,   GPIO_OUT);
     gpio_init(miso); gpio_set_dir(miso, GPIO_IN);
 
-    gpio_put(sck,  0);      /* SPI modo 0: o relogio repousa em baixo */
+    gpio_put(sck,  0);      /* SPI mode 0: the clock idles low */
     gpio_put(mosi, 0);
     gpio_put(cs,   1);
 }
@@ -94,9 +94,10 @@ static inline void bb_delay(void)
     if (bb_half) busy_wait_us(bb_half);
 }
 
-/* Um byte, MSB primeiro, SPI modo 0: o mestre poe o MOSI com o SCK em baixo,
-   sobe o SCK (a FPGA amostra o MOSI e o mestre amostra o MISO nesse flanco) e
-   volta a baixar (a FPGA avanca a mascara do MISO no flanco de descida). */
+/* One byte, most significant bit first, SPI mode 0: the master puts MOSI out
+   while SCK is low, raises SCK (the FPGA samples MOSI and the master samples
+   MISO on that edge) and lowers it again (the FPGA advances its MISO mask on
+   the falling edge). */
 static uint8_t bb_xfer(uint8_t tx)
 {
     uint8_t rx = 0;
@@ -132,12 +133,12 @@ void tmac_reset_bb(int channel, int level)
 void tmac_read_raw_bb(uint8_t *rx)
 {
     gpio_put(bb_cs, 0);
-    /* Manda zeros para manter o MOSI em baixo durante a leitura. */
+    /* Send zeros to hold MOSI low throughout the readout. */
     for (int i = 0; i < TMAC_FRAME_LEN; i++) rx[i] = bb_xfer(0x00);
     gpio_put(bb_cs, 1);
 }
 
-/* ================= comum as duas versoes ================= */
+/* ================= shared by both versions ================= */
 
 static uint32_t u32be(const uint8_t *p)
 {
@@ -174,10 +175,10 @@ void tmac_read_counters_bb(tmac_counters_t *c)
     decode(rx, c);
 }
 
-/* Reset, depois varrimentos dos 12 canais a freq_aquisition, uma linha CSV
-   por leitura para o stdout, ou seja para o monitor serial. Nao termina: le-se
-   no monitor e para-se com um reset da placa.
-   Todas as contagens sao continuas, com 2^32 somado por cada volta. */
+/* Reset, then scan the 12 channels at freq_aquisition, one CSV line per
+   reading to stdout, which is the serial port. Never returns: read it on the
+   serial monitor and stop it with a board reset.
+   Every count is continuous, with 2^32 added for each wrap of the counter. */
 static void acquire(int level, tmac_out_t out_trigger, int freq_aquisition,
                     bool bb)
 {
@@ -199,10 +200,10 @@ static void acquire(int level, tmac_out_t out_trigger, int freq_aquisition,
             else    { tmac_config(ch, level, out_trigger, TMAC_NO_RESET);
                       tmac_read_counters(&c); }
 
-            /* A FPGA limpa a flag do canal apenas na leitura do canal
-               selecionado, por isso olhamos so para o bit deste canal. As dos
-               triggers sao limpas em todas as leituras, logo tem de ser
-               acumuladas a cada canal. */
+            /* The FPGA clears a channel flag only on the readout of the
+               selected channel, so look at this channel's bit alone. The
+               trigger flags are cleared on every readout, so they have to be
+               accumulated on each channel. */
             if ((c.ovf_ch >> ch) & 1) wraps[ch]++;
             wraps_t1 += c.ovf_t1;
             wraps_t2 += c.ovf_t2;

@@ -1,13 +1,13 @@
-// Uma leitura por segundo do canal 0, com o trigger de maioria a disparar
-// com 4 ou mais canais activos.
+// One reading per second of channel 0, with the majority trigger firing on
+// four or more active channels.
 //
-// Ligacao usada aqui, ESP32 ao header GPIO1 da iCE40HX8K-EVB:
-//   SCK   GPIO18  ->  pino 11
-//   MOSI  GPIO23  ->  pino 13
-//   MISO  GPIO19  <-  pino 7
-//   CS    GPIO5   ->  pino 9
-//   GND           ->  pino 2, 4 ou 8
-// Confirma contra a tua ligacao antes de correr.
+// Wiring used here, ESP32 to the GPIO1 header of the iCE40HX8K-EVB:
+//   SCK   GPIO18  ->  pin 11
+//   MOSI  GPIO23  ->  pin 13
+//   MISO  GPIO19  <-  pin 7
+//   CS    GPIO5   ->  pin 9
+//   GND           ->  pin 2, 4 or 8
+// Check this against your own wiring before running.
 
 #include <tmac_ds.h>
 
@@ -21,7 +21,7 @@ void setup()
 #if defined(ESP32)
     tmac.begin(5, 18, 19, 23);      // CS, SCK, MISO, MOSI
 #else
-    tmac.begin(10);                 // CS, SPI nos pinos por omissao da placa
+    tmac.begin(10);                 // CS, SPI on the board's default pins
 #endif
 
     tmac.config(0, 3, TMAC_MAJORITY, TMAC_RESET);
@@ -39,7 +39,7 @@ void loop()
         Serial.print(c.trigger2); Serial.print(F("  ch0="));
         Serial.println(c.channel);
     } else {
-        Serial.println(F("frame invalido"));
+        Serial.println(F("invalid frame"));
     }
 
     delay(1000);

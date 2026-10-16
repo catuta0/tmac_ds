@@ -1,10 +1,10 @@
 """
-tmac_ds - driver MicroPython para o contador TMAC via SPI.
+tmac_ds - MicroPython driver for the TMAC counter over SPI.
 
-Palavra de configuracao, 10 bits:
+Configuration word, 10 bits:
     [9]=1  [8]=reset  [7]=out  [6:4]=level  [3:0]=channel
 
-Frame de leitura, 18 bytes:
+Readout frame, 18 bytes:
     t1 | t2 | channel | ms | flags
     flags: [15]=ovf t1  [14]=ovf t2  [13:2]=ovf channels  [1]=ovf time  [0]=1
 """
@@ -16,12 +16,13 @@ __version__ = "0.1.0"
 
 FRAME_LEN = 18
 
-# out_trigger: o que chega ao pino out. Os dois contadores de trigger contam
-# sempre, independentemente desta escolha.
+# out_trigger: what reaches the out pin. Both trigger counters always run,
+# whatever this is set to.
 MAJORITY = 0
 ADJACENCY = 1
 
-# reset: zera os 12 contadores de canal, os 2 de trigger e a base de tempo.
+# reset: zeroes the 12 channel counters, the 2 trigger counters and the time
+# base.
 NO_RESET = 0
 RESET = 1
 
@@ -38,13 +39,16 @@ class TmacDS:
 
     def config(self, channel, level, out_trigger=MAJORITY, reset=NO_RESET):
         if not 0 <= channel <= 15:
-            raise ValueError("channel deve estar entre 0 e 15")
+            raise ValueError("channel must be 0 to 15")
         if not 0 <= level <= 7:
-            raise ValueError("level deve estar entre 0 e 7")
+            raise ValueError("level must be 0 to 7")
         word = ((1 << 9) | (bool(reset) << 8) | (bool(out_trigger) << 7)
                 | (level << 4) | channel)
         self.cs.value(0)
         try:
+            # Left align the 10 bits inside the two bytes. The six padding bits
+            # must be zero, otherwise the FPGA reads one of them as the start
+            # bit of another word.
             self.spi.write(bytes([(word >> 2) & 0xFF, (word << 6) & 0xFF]))
         finally:
             self.cs.value(1)
@@ -55,6 +59,8 @@ class TmacDS:
     def read_raw(self):
         self.cs.value(0)
         try:
+            # The 0x00 holds MOSI low: a one there would be taken as the start
+            # of a configuration word.
             return self.spi.read(FRAME_LEN, 0x00)
         finally:
             self.cs.value(1)
@@ -76,14 +82,14 @@ class TmacDS:
 
     def start_aquisition(self, level, out_trigger=MAJORITY, freq_aquisition=1,
                          filename="tmac.csv"):
-        """Reset, depois varrimentos dos 12 canais a freq_aquisition, gravados
-        em filename. Para com Ctrl-C.
+        """Reset, then scan the 12 channels at freq_aquisition, writing to
+        filename. Stops on Ctrl-C.
 
-        Uma linha por leitura: ms,ch,count,trigger1,trigger2. Todas as
-        contagens sao continuas, com 2^32 somado por cada volta do contador.
+        One line per reading: ms,ch,count,trigger1,trigger2. Every count is
+        continuous, with 2^32 added for each wrap of the counter.
         """
         period_ms = int(1000 / freq_aquisition)
-        wraps = [0] * 12          # voltas de 2^32 dadas por cada canal
+        wraps = [0] * 12          # 2^32 wraps seen on each channel
         wraps_t1 = 0
         wraps_t2 = 0
 
@@ -98,10 +104,10 @@ class TmacDS:
                 for ch in range(12):
                     self.config(ch, level, out_trigger, reset=NO_RESET)
                     d = self.read_counters()
-                    # A FPGA limpa a flag do canal apenas na leitura do canal
-                    # selecionado, por isso olhamos so para o bit deste canal.
-                    # As dos triggers sao limpas em todas as leituras, logo tem
-                    # de ser acumuladas a cada canal.
+                    # The FPGA clears a channel flag only on the readout of the
+                    # selected channel, so look at this channel's bit alone.
+                    # The trigger flags are cleared on every readout, so they
+                    # have to be accumulated on each channel.
                     if (d["ovf_ch"] >> ch) & 1:
                         wraps[ch] += 1
                     wraps_t1 += d["ovf_t1"]
@@ -118,6 +124,6 @@ class TmacDS:
                 if elapsed < period_ms:
                     time.sleep_ms(period_ms - elapsed)
         except KeyboardInterrupt:
-            print("parado")
+            print("stopped")
         finally:
             f.close()

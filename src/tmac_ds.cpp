@@ -54,20 +54,18 @@ void TmacDS::config(uint8_t channel, uint8_t level, TmacOut out,
                     TmacReset reset)
 {
     sendWord(channel, level, out, reset);
-
-    if (reset == TMAC_RESET) {
-        // Clear bit 8 in the word the FPGA keeps. Without this the reset
-        // request stays armed, and a later transaction that starts a reception
-        // by accident would fire a second reset. No reset fires on this word:
-        // the FPGA samples the bit when the reception ends, and by then this
-        // word has already replaced the previous one.
-        sendWord(channel, level, out, TMAC_NO_RESET);
-    }
 }
 
-void TmacDS::reset(uint8_t channel, uint8_t level)
+void TmacDS::reset(uint8_t channel, uint8_t level, TmacOut out)
 {
-    config(channel, level, TMAC_MAJORITY, TMAC_RESET);
+    config(channel, level, out, TMAC_RESET);
+
+    // Clear bit 8 in the word the FPGA keeps. Without this the reset request
+    // stays armed, and a later transaction that starts a reception by accident
+    // would fire a second reset. This word fires nothing: the FPGA samples the
+    // bit when the reception ends, and by then this word has replaced the
+    // previous one.
+    config(channel, level, out, TMAC_NO_RESET);
 }
 
 void TmacDS::readRaw(uint8_t *rx)
@@ -128,7 +126,7 @@ void TmacDS::startAquisition(uint8_t level, TmacOut out, uint16_t freqHz)
     TmacCounters   c;
 
     Serial.println(F("ms,ch,count,trigger1,trigger2"));
-    config(0, level, out, TMAC_RESET);
+    reset(0, level, out);
 
     for (;;) {
         uint32_t start = millis();

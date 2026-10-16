@@ -5,7 +5,7 @@ falam o mesmo protocolo: **MicroPython** (`tmac_ds.py`), **Arduino IDE**
 (`src/`) e **C com o Pico SDK** (`c/`). Cada uma instala-se e usa-se
 independentemente das outras.
 
-Protocolo, igual nas duas:
+Protocolo, igual nas três:
 
 ```
 Palavra de configuração, 10 bits:
@@ -69,7 +69,7 @@ tmac = TmacDS(spi=spi, cs=Pin(5, Pin.OUT))
 | Método | Descrição |
 |---|---|
 | `config(channel, level, out_trigger=MAJORITY, reset=NO_RESET)` | Envia a palavra de configuração (canal 0–15, nível 0–7) |
-| `reset(channel=0, level=0)` | Atalho para `config(..., reset=RESET)` |
+| `reset(channel=0, level=0, out_trigger=MAJORITY)` | Zera os contadores e a base de tempo, deixando esta configuração |
 | `read_counters()` | Lê o frame de 18 bytes e devolve um `dict` |
 | `read_raw()` | Devolve os 18 bytes crus |
 | `start_aquisition(level, out_trigger=MAJORITY, freq_aquisition=1, filename="tmac.csv")` | Conveniência para testes. Reset, depois varrimentos dos 12 canais gravados em CSV na flash da placa. Para com Ctrl-C |
@@ -90,6 +90,11 @@ Os dois contadores de trigger contam sempre, qualquer que seja o `out_trigger`:
 essa escolha só decide qual das duas condições chega ao pino físico. E como o
 valor das constantes é o próprio bit, código antigo que passasse `0` e `1`
 continua a funcionar.
+
+A biblioteca não guarda a configuração: a palavra leva canal, level e out de uma
+vez e a trama de leitura não a devolve, logo cada `config` declara os três
+campos. E o `start_aquisition` é só para bring-up, grava num ficheiro e só para
+com Ctrl-C.
 
 ---
 
@@ -145,7 +150,7 @@ só `tmac.begin(cs)` e liga aos pinos de SPI por omissão da placa.
 | `begin(cs, hz = 1000000)` | Pinos de SPI por omissão da placa |
 | `begin(cs, sck, miso, mosi, hz = 1000000)` | Pinos escolhidos. Só em ESP32, ESP8266 e RP2040 |
 | `config(channel, level, out = TMAC_MAJORITY, reset = TMAC_NO_RESET)` | Envia a palavra de configuração |
-| `reset(channel = 0, level = 0)` | Atalho para `config(..., TMAC_RESET)` |
+| `reset(channel = 0, level = 0, out = TMAC_MAJORITY)` | Zera os contadores e a base de tempo, deixando esta configuração |
 | `readRaw(rx)` | Os 18 bytes crus para `rx` |
 | `readCounters(c)` | Preenche um `TmacCounters` |
 | `startAquisition(level, out, freqHz)` | Reset, depois varrimentos dos 12 canais em CSV para o `Serial`. Não termina |
@@ -158,8 +163,13 @@ As constantes são `TMAC_MAJORITY` e `TMAC_ADJACENCY` para o `out`, e
 versão C. Aqui são `enum` com tipo, logo o IDE propõe só os valores válidos de
 cada parâmetro.
 
-Não há variantes `_bb`: a biblioteca `SPI` do Arduino já resolve o bus, e nas
-placas onde interessa os pinos são escolhidos no `begin`.
+Não há variante em software do bus: a biblioteca `SPI` do Arduino já o resolve,
+e nas placas onde interessa os pinos são escolhidos no `begin`.
+
+Três coisas a saber: uma leitura bloqueia uns 150 µs a 1 MHz e não deve ser
+chamada de dentro de uma interrupção; a biblioteca não guarda a configuração,
+porque a palavra leva os três campos de uma vez e a trama não a devolve; e o
+`startAquisition` é só para bring-up, não retorna e imprime no `Serial`.
 
 ---
 
@@ -209,7 +219,7 @@ int main(void)
     stdio_init_all();
     tmac_init(spi0, 2, 3, 4, 5, 1000000);   // SCK, MOSI, MISO, CS, 1 MHz
 
-    tmac_config(0, 3, TMAC_MAJORITY, TMAC_RESET);   // canal 0, level 3
+    tmac_reset(0, 3, TMAC_MAJORITY);        // canal 0, level 3, zera tudo
 
     while (true) {
         tmac_read_counters(&c);
@@ -224,47 +234,56 @@ int main(void)
 
 ## API
 
+Escolhes o bus **uma vez**, no init, e tudo o resto segue essa escolha. Não há
+duas famílias de funções.
+
 | Função | Descrição |
 |---|---|
-| `tmac_init(spi, sck, mosi, miso, cs, baudrate)` | SPI de hardware. O tecto da FPGA é 25 MHz |
-| `tmac_config(channel, level, out_trigger, reset)` | Envia a palavra de configuração |
-| `tmac_reset(channel, level)` | Atalho para `tmac_config(..., TMAC_RESET)` |
-| `tmac_read_raw(rx)` | Os 18 bytes crus para `rx` |
-| `tmac_read_counters(&c)` | Preenche um `tmac_counters_t` |
-| `tmac_start_aquisition(level, out_trigger, freq_aquisition)` | Conveniência para testes. Reset, depois varrimentos dos 12 canais em CSV para o `stdout`. Não termina |
+| `tmac_init(spi, sck, mosi, miso, cs, baudrate)` | SPI de hardware |
+| `tmac_init_bb(sck, mosi, miso, cs, half_period_us)` | SPI em software, para quando os pinos livres não formam um SPI de hardware |
+| `tmac_config(channel, level, out, reset)` | Uma palavra com os três campos |
+| `tmac_reset(channel, level, out)` | Zera os contadores e a base de tempo, deixando esta configuração |
+| `tmac_read_raw(rx)` | Os 18 bytes crus, para empurrar para um buffer teu |
+| `tmac_read_counters(&c)` | A mesma trama, descodificada |
+| `tmac_start_aquisition(level, out, freqHz)` | Só para bring-up, ver abaixo |
 
-Os dois últimos parâmetros do `tmac_config` são `enum`, não inteiros:
+Constantes: `TMAC_MAJORITY` e `TMAC_ADJACENCY` para o `out`, `TMAC_NO_RESET` e
+`TMAC_RESET` para o `reset`. São `enum` com tipo, logo o editor propõe só os
+valores válidos de cada parâmetro e trocar a ordem dos dois últimos dá erro de
+tipo.
 
-| Constante | Tipo | Significado |
-|---|---|---|
-| `TMAC_MAJORITY` | `tmac_out_t` | o pino out segue o trigger de maioria |
-| `TMAC_ADJACENCY` | `tmac_out_t` | o pino out segue o trigger de adjacência |
-| `TMAC_NO_RESET` | `tmac_reset_t` | deixa os contadores a correr |
-| `TMAC_RESET` | `tmac_reset_t` | zera os 12 contadores de canal, os 2 de trigger e a base de tempo |
+Campos de `tmac_counters_t`: `trigger1`, `trigger2`, `channel`, `ms`, `ovf_ch`
+(12 bits, um por canal), `ovf_t1`, `ovf_t2`, `ovf_time`, `valid`.
 
-Os dois contadores de trigger contam sempre, qualquer que seja o `out_trigger`:
-essa escolha só decide qual das duas condições chega ao pino físico. O valor de
-cada constante é o próprio bit da palavra, logo código que passasse `0` e `1`
-continua a compilar.
+## Três coisas a saber antes de a meter num programa existente
 
-Cada função que toca no bus tem um gémeo com sufixo **`_bb`** que faz o SPI em
-software: `tmac_init_bb(sck, mosi, miso, cs, half_period_us)`,
-`tmac_config_bb`, `tmac_reset_bb`, `tmac_read_raw_bb`,
-`tmac_read_counters_bb`, `tmac_start_aquisition_bb`. Servem para quando os
-pinos livres não formam um SPI de hardware. **Não se misturam**: inicializas
-com `tmac_init` ou com `tmac_init_bb` e daí para a frente usas só o conjunto
-correspondente.
+**Custo.** Uma leitura são 18 bytes e bloqueia cerca de 150 µs a 1 MHz; uma
+configuração são 2 bytes. **Nunca chames nada disto de dentro de uma
+interrupção**: numa placa que também serve uma IRQ rápida perderias eventos. O
+sítio certo é o loop principal ou um interpretador de comandos. Ser interrompido
+a meio de uma transacção é inofensivo, porque o CS fica em baixo e a FPGA só
+avança nos flancos de SCK.
 
-Diferenças em relação à versão MicroPython, as duas por limitação do ambiente:
-um programa do Pico SDK não tem sistema de ficheiros, logo a aquisição escreve
-no `stdout` em vez de num ficheiro e o CSV recolhe-se do lado do PC; e não há
-Ctrl-C, logo a aquisição não termina e para-se com um reset da placa.
+**A biblioteca não guarda estado.** A palavra leva canal, level e out de uma
+vez, e a trama de leitura não a devolve, logo não há como reler a configuração
+da FPGA. Cada `tmac_config` declara os três campos, e lembrar-se deles entre
+chamadas é trabalho de quem chama.
+
+**O `tmac_start_aquisition` é só para bring-up.** Não retorna, e faz `printf` de
+texto CSV para o `stdout`. Não a chames de um programa que mande binário pelo
+mesmo `stdout`, porque o texto desalinha quem estiver a ler do outro lado. Para
+algo a sério usa o `tmac_config` e o `tmac_read_counters` e escreve o teu loop.
 
 ## Integrar num programa de aquisição já existente
 
 Exemplo com o `picodaq`, que tem um interpretador de comandos de uma letra
-(`run_cmd`). Acrescentar uma letra integra a FPGA sem tocar em nada do que já
+(`run_cmd`). Acrescentar letras integra a FPGA sem tocar em nada do que já
 funciona.
+
+Os comandos que já lá estão (`D`, `R`, `S`, `T`) seguem três regras: são verbos
+que actuam, não imprimem nada, e aplicam o parâmetro ao hardware na hora. Os
+dados saem por outro caminho, o ring buffer em binário pelo core 1. Convém que
+os comandos novos sigam o mesmo.
 
 No `CMakeLists.txt`, juntar ao `target_link_libraries` existente:
 
@@ -281,34 +300,51 @@ No `picodaq.c`:
 ```c
 #include "tmac_ds.h"
 
-// no main(), depois do stdio_init_all()
+// estado da configuracao, porque a palavra leva os tres campos de uma vez
+int tmac_chan  = 0;
+int tmac_level = 0;
+
+// no main(), depois do init_trg()
 tmac_init_bb(22, 0, 1, 26, 1);      // SCK, MOSI, MISO, CS, meio periodo em us
 
-// em run_cmd(), um comando novo: C<canal> le os contadores desse canal
-case 'C': {
-    tmac_counters_t c;
-    tmac_config_bb(atoi(buf+1), 3, TMAC_MAJORITY, TMAC_NO_RESET);
-    tmac_read_counters_bb(&c);
-    printf("%lu %lu %lu %lu\n", (unsigned long)c.ms,
-           (unsigned long)c.trigger1, (unsigned long)c.trigger2,
-           (unsigned long)c.channel);
+// em run_cmd(), antes do case 'T' ou depois de lhe acrescentar o break que
+// lhe falta, senao o T cai dentro do primeiro caso novo
+case 'M':                           // M<n>: majority level, zera os contadores
+    tmac_level = atoi(buf+1);
+    tmac_reset(tmac_chan, tmac_level, TMAC_MAJORITY);
     break;
-}
+
+case 'C':                           // C<n>: canal que a leitura reporta
+    tmac_chan = atoi(buf+1);
+    tmac_config(tmac_chan, tmac_level, TMAC_MAJORITY, TMAC_NO_RESET);
+    break;
 ```
 
-Três regras ao integrar:
+Faltam os dados. A forma que respeita a arquitectura é empurrar uma trama de
+contadores para o **mesmo ring buffer**, com um terminador diferente para o
+host as distinguir. As contas encaixam sem mudar nada: o `EVTLEN` são 5 words,
+e a trama do TMAC são 16 bytes de contadores mais 16 bits de flags.
+
+```
+word 0:  trigger1
+word 1:  trigger2
+word 2:  channel
+word 3:  ms
+word 4:  0x55AB0000 | flags      <- terminador mais as 16 flags
+```
+
+Os 16 bits de baixo do word 4 estão livres no formato dele e as flags são
+exactamente 16 bits. O host separa pelo terminador: `0x55AA` para o ADC,
+`0x55AB` para o TMAC.
+
+Duas regras ao integrar, as duas já no header mas vale a pena repetir:
 
 **Não ponhas SPI dentro de uma IRQ.** No `picodaq` o `gpio_callback` corre no
-flanco do `/EOLC` do ADC e tem de ser curto; uma leitura de 18 bytes a 1 MHz
-leva uns 150 µs e perderias eventos. O sítio certo é o core 0, no interpretador
-de comandos ou no loop principal.
+flanco do `/EOLC` do ADC e tem de ser curto; uma leitura leva uns 150 µs e
+perderias eventos.
 
-**Não ponhas SPI no core 1**, que no `picodaq` é um `while(1)` apertado a
-esvaziar o ring buffer.
-
-**Ser interrompido a meio de uma transacção não faz mal.** O CS fica em baixo e
-a FPGA só avança a máscara do MISO nos flancos de SCK, logo uma pausa entre
-bytes não desalinha nada.
+**Não ponhas SPI no core 1**, que é um `while(1)` apertado a esvaziar o ring
+buffer.
 
 Se quiseres o tempo da FPGA no stream de eventos do ADC, a maneira barata é o
 core 0 guardar o `c.ms` numa `volatile` e a IRQ copiá-la para o word 0 do

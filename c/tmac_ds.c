@@ -2,16 +2,23 @@
 #include "tmac_ds.h"
 #include "pico/stdlib.h"
 
-/* ================= hardware SPI ================= */
+/* ================= which bus, chosen at init ================= */
 
-static spi_inst_t *tmac_spi;
-static uint        tmac_cs;
+static bool use_bb = false;
+
+/* Hardware SPI. */
+static spi_inst_t *hw_spi;
+static uint        hw_cs;
+
+/* Bit banged bus. */
+static uint bb_sck, bb_mosi, bb_miso, bb_cs, bb_half;
 
 void tmac_init(spi_inst_t *spi, uint sck, uint mosi, uint miso, uint cs,
                uint baudrate)
 {
-    tmac_spi = spi;
-    tmac_cs  = cs;
+    use_bb = false;
+    hw_spi = spi;
+    hw_cs  = cs;
 
     spi_init(spi, baudrate);
     spi_set_format(spi, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
@@ -25,54 +32,10 @@ void tmac_init(spi_inst_t *spi, uint sck, uint mosi, uint miso, uint cs,
     gpio_put(cs, 1);
 }
 
-/* Build the word and left align its 10 bits inside the two bytes. The six
-   padding bits must be zero, otherwise the FPGA reads one of them as the start
-   bit of another word. */
-static void pack_word(int channel, int level, tmac_out_t out_trigger,
-                      tmac_reset_t reset, uint8_t *tx)
-{
-    uint16_t word = (1u << 9)
-                  | ((uint16_t)(reset       ? 1 : 0) << 8)
-                  | ((uint16_t)(out_trigger ? 1 : 0) << 7)
-                  | ((uint16_t)level                 << 4)
-                  |  (uint16_t)channel;
-
-    tx[0] = (uint8_t)((word >> 2) & 0xFF);
-    tx[1] = (uint8_t)((word << 6) & 0xFF);
-}
-
-void tmac_config(int channel, int level, tmac_out_t out_trigger,
-                 tmac_reset_t reset)
-{
-    uint8_t tx[2];
-    pack_word(channel, level, out_trigger, reset, tx);
-
-    gpio_put(tmac_cs, 0);
-    spi_write_blocking(tmac_spi, tx, 2);
-    gpio_put(tmac_cs, 1);
-}
-
-void tmac_reset(int channel, int level)
-{
-    tmac_config(channel, level, TMAC_MAJORITY, TMAC_RESET);
-}
-
-void tmac_read_raw(uint8_t *rx)
-{
-    gpio_put(tmac_cs, 0);
-    /* The repeated 0x00 holds MOSI low: a one there would be taken as the
-       start of a configuration word. */
-    spi_read_blocking(tmac_spi, 0x00, rx, TMAC_FRAME_LEN);
-    gpio_put(tmac_cs, 1);
-}
-
-/* ================= bit banging ================= */
-
-static uint bb_sck, bb_mosi, bb_miso, bb_cs, bb_half;
-
 void tmac_init_bb(uint sck, uint mosi, uint miso, uint cs,
                   uint half_period_us)
 {
+    use_bb  = true;
     bb_sck  = sck;
     bb_mosi = mosi;
     bb_miso = miso;
@@ -88,6 +51,8 @@ void tmac_init_bb(uint sck, uint mosi, uint miso, uint cs,
     gpio_put(mosi, 0);
     gpio_put(cs,   1);
 }
+
+/* ================= the bus, both backends behind one door ================= */
 
 static inline void bb_delay(void)
 {
@@ -113,32 +78,66 @@ static uint8_t bb_xfer(uint8_t tx)
     return rx;
 }
 
-void tmac_config_bb(int channel, int level, tmac_out_t out_trigger,
-                    tmac_reset_t reset)
+static void cs_put(int level)
 {
-    uint8_t tx[2];
-    pack_word(channel, level, out_trigger, reset, tx);
-
-    gpio_put(bb_cs, 0);
-    bb_xfer(tx[0]);
-    bb_xfer(tx[1]);
-    gpio_put(bb_cs, 1);
+    gpio_put(use_bb ? bb_cs : hw_cs, level);
 }
 
-void tmac_reset_bb(int channel, int level)
+static void bus_write(const uint8_t *tx, int n)
 {
-    tmac_config_bb(channel, level, TMAC_MAJORITY, TMAC_RESET);
+    if (use_bb) for (int i = 0; i < n; i++) bb_xfer(tx[i]);
+    else        spi_write_blocking(hw_spi, tx, (size_t)n);
 }
 
-void tmac_read_raw_bb(uint8_t *rx)
+static void bus_read(uint8_t *rx, int n)
 {
-    gpio_put(bb_cs, 0);
-    /* Send zeros to hold MOSI low throughout the readout. */
-    for (int i = 0; i < TMAC_FRAME_LEN; i++) rx[i] = bb_xfer(0x00);
-    gpio_put(bb_cs, 1);
+    /* Zeros go out on MOSI throughout: a one there would be taken as the
+       start bit of a configuration word. */
+    if (use_bb) for (int i = 0; i < n; i++) rx[i] = bb_xfer(0x00);
+    else        spi_read_blocking(hw_spi, 0x00, rx, (size_t)n);
 }
 
-/* ================= shared by both versions ================= */
+/* ================= configuration ================= */
+
+void tmac_config(int channel, int level, tmac_out_t out, tmac_reset_t reset)
+{
+    uint16_t word = (1u << 9)
+                  | ((uint16_t)(reset ? 1 : 0) << 8)
+                  | ((uint16_t)(out   ? 1 : 0) << 7)
+                  | ((uint16_t)level           << 4)
+                  |  (uint16_t)channel;
+
+    /* Left align the 10 bits inside the two bytes. The six padding bits must
+       be zero, otherwise the FPGA reads one of them as the start bit of
+       another word. */
+    uint8_t tx[2] = { (uint8_t)((word >> 2) & 0xFF),
+                      (uint8_t)((word << 6) & 0xFF) };
+
+    cs_put(0);
+    bus_write(tx, 2);
+    cs_put(1);
+}
+
+void tmac_reset(int channel, int level, tmac_out_t out)
+{
+    tmac_config(channel, level, out, TMAC_RESET);
+
+    /* Clear bit 8 in the word the FPGA keeps. Without this the reset request
+       stays armed, and a later transaction that starts a reception by accident
+       would fire a second reset. This word fires nothing: the FPGA samples the
+       bit when the reception ends, and by then this word has replaced the
+       previous one. */
+    tmac_config(channel, level, out, TMAC_NO_RESET);
+}
+
+/* ================= readout ================= */
+
+void tmac_read_raw(uint8_t *rx)
+{
+    cs_put(0);
+    bus_read(rx, TMAC_FRAME_LEN);
+    cs_put(1);
+}
 
 static uint32_t u32be(const uint8_t *p)
 {
@@ -146,9 +145,13 @@ static uint32_t u32be(const uint8_t *p)
          | ((uint32_t)p[2] <<  8) |  (uint32_t)p[3];
 }
 
-static void decode(const uint8_t *rx, tmac_counters_t *c)
+void tmac_read_counters(tmac_counters_t *c)
 {
-    uint16_t f = ((uint16_t)rx[16] << 8) | rx[17];
+    uint8_t  rx[TMAC_FRAME_LEN];
+    uint16_t f;
+
+    tmac_read_raw(rx);
+    f = ((uint16_t)rx[16] << 8) | rx[17];
 
     c->trigger1 = u32be(rx + 0);
     c->trigger2 = u32be(rx + 4);
@@ -161,44 +164,24 @@ static void decode(const uint8_t *rx, tmac_counters_t *c)
     c->valid    =  f        & 1;
 }
 
-void tmac_read_counters(tmac_counters_t *c)
-{
-    uint8_t rx[TMAC_FRAME_LEN];
-    tmac_read_raw(rx);
-    decode(rx, c);
-}
+/* ================= bring-up convenience ================= */
 
-void tmac_read_counters_bb(tmac_counters_t *c)
-{
-    uint8_t rx[TMAC_FRAME_LEN];
-    tmac_read_raw_bb(rx);
-    decode(rx, c);
-}
-
-/* Reset, then scan the 12 channels at freq_aquisition, one CSV line per
-   reading to stdout, which is the serial port. Never returns: read it on the
-   serial monitor and stop it with a board reset.
-   Every count is continuous, with 2^32 added for each wrap of the counter. */
-static void acquire(int level, tmac_out_t out_trigger, int freq_aquisition,
-                    bool bb)
+void tmac_start_aquisition(int level, tmac_out_t out, int freq_aquisition)
 {
     uint32_t period_ms = 1000u / (freq_aquisition > 0 ? freq_aquisition : 1);
-    uint32_t wraps[12] = {0};
+    uint32_t wraps[TMAC_CHANNELS] = {0};
     uint64_t wraps_t1 = 0, wraps_t2 = 0;
     tmac_counters_t c;
 
     printf("ms,ch,count,trigger1,trigger2\n");
-    if (bb) tmac_config_bb(0, level, out_trigger, TMAC_RESET);
-    else    tmac_config(0, level, out_trigger, TMAC_RESET);
+    tmac_reset(0, level, out);
 
     while (true) {
         uint32_t start = to_ms_since_boot(get_absolute_time());
 
-        for (int ch = 0; ch < 12; ch++) {
-            if (bb) { tmac_config_bb(ch, level, out_trigger, TMAC_NO_RESET);
-                      tmac_read_counters_bb(&c); }
-            else    { tmac_config(ch, level, out_trigger, TMAC_NO_RESET);
-                      tmac_read_counters(&c); }
+        for (int ch = 0; ch < TMAC_CHANNELS; ch++) {
+            tmac_config(ch, level, out, TMAC_NO_RESET);
+            tmac_read_counters(&c);
 
             /* The FPGA clears a channel flag only on the readout of the
                selected channel, so look at this channel's bit alone. The
@@ -218,16 +201,4 @@ static void acquire(int level, tmac_out_t out_trigger, int freq_aquisition,
         uint32_t elapsed = to_ms_since_boot(get_absolute_time()) - start;
         if (elapsed < period_ms) sleep_ms(period_ms - elapsed);
     }
-}
-
-void tmac_start_aquisition(int level, tmac_out_t out_trigger,
-                           int freq_aquisition)
-{
-    acquire(level, out_trigger, freq_aquisition, false);
-}
-
-void tmac_start_aquisition_bb(int level, tmac_out_t out_trigger,
-                              int freq_aquisition)
-{
-    acquire(level, out_trigger, freq_aquisition, true);
 }

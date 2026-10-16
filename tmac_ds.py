@@ -7,14 +7,32 @@ Configuration word, 10 bits:
 Readout frame, 18 bytes:
     t1 | t2 | channel | ms | flags
     flags: [15]=ovf t1  [14]=ovf t2  [13:2]=ovf channels  [1]=ovf time  [0]=1
+
+Configuration and readout are always separate transactions: the FPGA latches
+the frame while CS is high, so a word sent inside a readout would only govern
+the following one.
+
+The word carries channel, level and out together, and the readout frame does
+not carry it back, so the FPGA cannot be queried for it. This driver keeps
+nothing: every config call states all three fields, and remembering them
+between calls is the caller's job.
+
+start_aquisition is a convenience for bring-up only: it never returns on its
+own and it writes to a file. For anything real, use config and read_counters
+and write your own loop.
 """
 
 from machine import Pin, SPI
 import time
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 FRAME_LEN = 18
+CHANNELS = 12
+
+# The FPGA ceiling: half an SCK period must cover two cycles of the 100 MHz
+# clki.
+SCK_MAX_HZ = 25_000_000
 
 # out_trigger: what reaches the out pin. Both trigger counters always run,
 # whatever this is set to.
@@ -38,10 +56,12 @@ class TmacDS:
         self.cs.value(1)
 
     def config(self, channel, level, out_trigger=MAJORITY, reset=NO_RESET):
+        """Send all three fields at once, in a single word."""
         if not 0 <= channel <= 15:
             raise ValueError("channel must be 0 to 15")
         if not 0 <= level <= 7:
             raise ValueError("level must be 0 to 7")
+
         word = ((1 << 9) | (bool(reset) << 8) | (bool(out_trigger) << 7)
                 | (level << 4) | channel)
         self.cs.value(0)
@@ -53,10 +73,22 @@ class TmacDS:
         finally:
             self.cs.value(1)
 
-    def reset(self, channel=0, level=0):
-        self.config(channel, level, reset=RESET)
+    def reset(self, channel=0, level=0, out_trigger=MAJORITY):
+        """Zero every counter and the time base.
+
+        Takes the configuration to leave in place, because the word carries all
+        three fields together.
+        """
+        self.config(channel, level, out_trigger, RESET)
+        # Clear bit 8 in the word the FPGA keeps. Without this the reset
+        # request stays armed, and a later transaction that starts a reception
+        # by accident would fire a second reset. This word fires nothing: the
+        # FPGA samples the bit when the reception ends, and by then this word
+        # has replaced the previous one.
+        self.config(channel, level, out_trigger, NO_RESET)
 
     def read_raw(self):
+        """The 18 frame bytes as they arrive."""
         self.cs.value(0)
         try:
             # The 0x00 holds MOSI low: a one there would be taken as the start
@@ -66,6 +98,11 @@ class TmacDS:
             self.cs.value(1)
 
     def read_counters(self):
+        """The same frame, decoded into a dict.
+
+        A false "valid" means the master lost byte alignment and the rest of
+        the fields are junk.
+        """
         d = self.read_raw()
         f = (d[16] << 8) | d[17]
         return {
@@ -82,27 +119,27 @@ class TmacDS:
 
     def start_aquisition(self, level, out_trigger=MAJORITY, freq_aquisition=1,
                          filename="tmac.csv"):
-        """Reset, then scan the 12 channels at freq_aquisition, writing to
-        filename. Stops on Ctrl-C.
+        """Bring-up convenience. Reset, then scan the 12 channels at
+        freq_aquisition, writing to filename. Stops on Ctrl-C.
 
         One line per reading: ms,ch,count,trigger1,trigger2. Every count is
         continuous, with 2^32 added for each wrap of the counter.
         """
         period_ms = int(1000 / freq_aquisition)
-        wraps = [0] * 12          # 2^32 wraps seen on each channel
+        wraps = [0] * CHANNELS     # 2^32 wraps seen on each channel
         wraps_t1 = 0
         wraps_t2 = 0
 
         f = open(filename, "w")
         f.write("ms,ch,count,trigger1,trigger2\n")
-        self.config(0, level, out_trigger, reset=RESET)
+        self.reset(0, level, out_trigger)
 
         try:
             while True:
                 start = time.ticks_ms()
 
-                for ch in range(12):
-                    self.config(ch, level, out_trigger, reset=NO_RESET)
+                for ch in range(CHANNELS):
+                    self.config(ch, level, out_trigger, NO_RESET)
                     d = self.read_counters()
                     # The FPGA clears a channel flag only on the readout of the
                     # selected channel, so look at this channel's bit alone.

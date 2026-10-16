@@ -65,35 +65,50 @@ class TmacDS:
             "valid":    f & 1,
         }
 
-    def start_aquisition(self, level, out_trigger=0, freq_aquisition=1):
-        """Reset, depois um varrimento dos 12 canais repetido a freq_aquisition.
+    def start_aquisition(self, level, out_trigger=0, freq_aquisition=1,
+                         filename="tmac.csv"):
+        """Reset, depois varrimentos dos 12 canais a freq_aquisition, gravados
+        em filename. Para com Ctrl-C.
 
-        Gerador: cada iteracao devolve um dict com
-            "channels": lista de (canal, ms, contagem), uma entrada por canal
-            "triggers": (ms, trigger1, trigger2) de uma leitura final
+        Uma linha por leitura: ms,ch,count,trigger1,trigger2. Todas as
+        contagens sao continuas, com 2^32 somado por cada volta do contador.
         """
         period_ms = int(1000 / freq_aquisition)
+        wraps = [0] * 12          # voltas de 2^32 dadas por cada canal
+        wraps_t1 = 0
+        wraps_t2 = 0
+
+        f = open(filename, "w")
+        f.write("ms,ch,count,trigger1,trigger2\n")
         self.config(0, level, out_trigger, reset=1)
 
-        while True:
-            start = time.ticks_ms()
+        try:
+            while True:
+                start = time.ticks_ms()
 
-            channels = []
-            for ch in range(12):
-                self.config(ch, level, out_trigger, reset=0)
-                d = self.read_counters()
-                memory = memory.append(d)
-                if d==1:
-                    counter of ch = ((ultima contagem deo channel ch)/2^32)->aproximado a unidade + 2^32+ch
-                logica que corrige o ofset dos contadores dos canais que derao wrap-around, para que a contagem seja continua e nao reinicie a cada 2^32    
-                channels.append((ch, d["ms"], d["channel"]))
+                for ch in range(12):
+                    self.config(ch, level, out_trigger, reset=0)
+                    d = self.read_counters()
+                    # A FPGA limpa a flag do canal apenas na leitura do canal
+                    # selecionado, por isso olhamos so para o bit deste canal.
+                    # As dos triggers sao limpas em todas as leituras, logo tem
+                    # de ser acumuladas a cada canal.
+                    if (d["ovf_ch"] >> ch) & 1:
+                        wraps[ch] += 1
+                    wraps_t1 += d["ovf_t1"]
+                    wraps_t2 += d["ovf_t2"]
+                    f.write("{},{},{},{},{}\n".format(
+                        d["ms"], ch,
+                        (wraps[ch] << 32) + d["channel"],
+                        (wraps_t1 << 32) + d["trigger1"],
+                        (wraps_t2 << 32) + d["trigger2"]))
 
-            d = self.read_counters()
-            triggers = (d["ms"], d["trigger1"], d["trigger2"])
+                f.flush()
 
-            yield {"channels": channels, "triggers": triggers}
-
-            elapsed = time.ticks_diff(time.ticks_ms(), start)
-            if elapsed < period_ms:
-                time.sleep_ms(period_ms - elapsed)
-
+                elapsed = time.ticks_diff(time.ticks_ms(), start)
+                if elapsed < period_ms:
+                    time.sleep_ms(period_ms - elapsed)
+        except KeyboardInterrupt:
+            print("parado")
+        finally:
+            f.close()

@@ -32,15 +32,17 @@ void tmac_init(spi_inst_t *spi, uint sck, uint mosi, uint miso, uint cs,
     gpio_put(cs, 1);
 }
 
-void tmac_init_bb(uint sck, uint mosi, uint miso, uint cs,
-                  uint half_period_us)
+void tmac_init_bb(uint sck, uint mosi, uint miso, uint cs, uint baudrate)
 {
     use_bb  = true;
     bb_sck  = sck;
     bb_mosi = mosi;
     bb_miso = miso;
     bb_cs   = cs;
-    bb_half = half_period_us;
+
+    /* Half of the SCK period, in microseconds: 1e6 / (2 * baudrate). Rounds
+       down to zero above 500 kHz, which means no added delay at all. */
+    bb_half = baudrate ? (500000u / baudrate) : 0;
 
     gpio_init(sck);  gpio_set_dir(sck,  GPIO_OUT);
     gpio_init(mosi); gpio_set_dir(mosi, GPIO_OUT);

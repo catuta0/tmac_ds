@@ -82,10 +82,12 @@ typedef struct {
 void tmac_init(spi_inst_t *spi, uint sck, uint mosi, uint miso, uint cs,
                uint baudrate);
 
-/* half_period_us: half of the SCK period. 0 goes as fast as the GPIOs allow,
-   1 gives about 500 kHz. The FPGA ceiling is never reached either way. */
-void tmac_init_bb(uint sck, uint mosi, uint miso, uint cs,
-                  uint half_period_us);
+/* baudrate in Hz, same meaning as in tmac_init. Bit banging cannot be exact:
+   toggling the GPIOs takes time of its own, so the real clock comes out
+   somewhat slower than asked, and above a few hundred kHz the delay rounds to
+   nothing and the speed is simply whatever the GPIOs manage. Treat it as a
+   ceiling. The FPGA ceiling of 25 MHz is never reached either way. */
+void tmac_init_bb(uint sck, uint mosi, uint miso, uint cs, uint baudrate);
 
 /* ---- configuration ---- */
 

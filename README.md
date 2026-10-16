@@ -240,7 +240,7 @@ duas famílias de funções.
 | Função | Descrição |
 |---|---|
 | `tmac_init(spi, sck, mosi, miso, cs, baudrate)` | SPI de hardware |
-| `tmac_init_bb(sck, mosi, miso, cs, half_period_us)` | SPI em software, para quando os pinos livres não formam um SPI de hardware |
+| `tmac_init_bb(sck, mosi, miso, cs, baudrate)` | SPI em software, para quando os pinos livres não formam um SPI de hardware. O baudrate é um tecto, não exacto: alternar os GPIO leva tempo e o relógio real sai mais lento |
 | `tmac_config(channel, level, out, reset)` | Uma palavra com os três campos |
 | `tmac_reset(channel, level, out)` | Zera os contadores e a base de tempo, deixando esta configuração |
 | `tmac_read_raw(rx)` | Os 18 bytes crus, para empurrar para um buffer teu |
@@ -305,7 +305,7 @@ int tmac_chan  = 0;
 int tmac_level = 0;
 
 // no main(), depois do init_trg()
-tmac_init_bb(22, 0, 1, 26, 1);      // SCK, MOSI, MISO, CS, meio periodo em us
+tmac_init_bb(22, 0, 1, 26, 1000000);    // SCK, MOSI, MISO, CS, 1 MHz
 
 // em run_cmd(), antes do case 'T' ou depois de lhe acrescentar o break que
 // lhe falta, senao o T cai dentro do primeiro caso novo

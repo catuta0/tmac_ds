@@ -1,63 +1,62 @@
 # tmac_ds
 
-Lê e configura o contador TMAC via SPI, em três versões que falam o mesmo
-protocolo: MicroPython (tmac_ds.py), Arduino IDE (src/) e C com o Pico SDK
-(c/). Cada uma instala-se e usa-se independentemente das outras.
+Reads and configures the TMAC counter over SPI, in three versions that speak
+the same protocol: MicroPython (tmac_ds.py), Arduino IDE (src/) and C with the
+Pico SDK (c/). Each one is installed and used independently of the others.
 
-## Instalação
+## Installation
 
-MicroPython: com o mpremote ligado à placa, mpremote mip install
-github:catuta0/tmac_ds. Ou copia o tmac_ds.py à mão.
+MicroPython: with mpremote connected to the board, mpremote mip install
+github:catuta0/tmac_ds. Or copy tmac_ds.py by hand.
 
-Arduino IDE: clona para a pasta de bibliotecas, que no macOS é
-~/Documents/Arduino/libraries, ou descarrega o zip e usa Sketch, Include
-Library, Add .ZIP Library. O exemplo fica em File, Examples, tmac_ds,
+Arduino IDE: clone into the libraries folder, which on macOS is
+~/Documents/Arduino/libraries, or download the zip and use Sketch, Include
+Library, Add .ZIP Library. The example turns up under File, Examples, tmac_ds,
 tmac_basic.
 
-C com o Pico SDK: não há gestor de pacotes, a instalação é CMake. Põe o
-repositório em external/tmac_ds do teu projecto, acrescenta
-add_subdirectory(external/tmac_ds/c tmac_ds) ao CMakeLists.txt e tmac_ds ao
-target_link_libraries. O add_subdirectory já traz os include directories, basta
-incluir o tmac_ds.h.
-
+C with the Pico SDK: there is no package manager, installation is CMake. Put
+the repository in external/tmac_ds of your project, add
+add_subdirectory(external/tmac_ds/c tmac_ds) to CMakeLists.txt and tmac_ds to
+target_link_libraries. The add_subdirectory already brings the include
+directories along, so including tmac_ds.h is enough.
 
 
 ## API
 
-As três versões têm as mesmas seis funções, com os nomes na convenção de cada
-linguagem. Por ordem, MicroPython, Arduino e C:
+The three versions have the same six functions, named by each language's
+convention. In order, MicroPython, Arduino and C:
 
-- TmacDS(...), begin, tmac_init e tmac_init_bb. Abre o barramento. Em C o _bb
-  faz o SPI em software em vez do de hardware, para quando os pinos livres não
-  formam um SPI, e a escolha fica feita para todas as outras chamadas.
-- config, config, tmac_config. Manda uma palavra com os três campos.
-- reset, reset, tmac_reset. Zera tudo. Leva a configuração a deixar em vigor,
-  porque a palavra carrega os três campos juntos.
-- read_raw, readRaw, tmac_read_raw. Os 18 bytes como vêm.
-- read_counters, readCounters, tmac_read_counters. O mesmo frame,
-  descodificado.
-- start_aquisition, startAquisition, tmac_start_aquisition. Só para arranque,
-  ver a secção seguinte.
+- TmacDS(...), begin, tmac_init and tmac_init_bb. Opens the bus. In C the _bb
+  one does the SPI in software instead of in hardware, for when the free pins
+  cannot form an SPI, and that choice then governs every other call.
+- config, config, tmac_config. Sends one word with all three fields.
+- reset, reset, tmac_reset. Zeroes everything. Takes the configuration to
+  leave in place, because the word carries the three fields together.
+- read_raw, readRaw, tmac_read_raw. The 18 bytes as they arrive.
+- read_counters, readCounters, tmac_read_counters. The same frame, decoded.
+- start_aquisition, startAquisition, tmac_start_aquisition. Bring-up only, see
+  the next section.
 
-As constantes do campo out e do reset chamam-se MAJORITY, ADJACENCY, NO_RESET e
-RESET, com prefixo TMAC_ em C e em Arduino.
+The constants for the out field and for the reset are called MAJORITY,
+ADJACENCY, NO_RESET and RESET, prefixed with TMAC_ in C and in Arduino.
 
 
-## Três coisas a saber antes de a meter num programa existente
+## Three things to know before putting it in an existing program
 
-Uma leitura são 18 bytes e bloqueia cerca de 150 us a 1 MHz; uma configuração
-são 2 bytes. Nunca chames nada disto de dentro de um handler de interrupção:
-num programa que também serve um IRQ rápido perderias eventos. O sítio certo é
-o loop principal ou um interpretador de comandos. Ser interrompido a meio de
-uma transacção é inofensivo, porque o CS fica em baixo e a FPGA só avança nas
-transições do SCK.
+A readout is 18 bytes and blocks for about 150 us at 1 MHz; a configuration is
+2 bytes. Never call any of this from inside an interrupt handler: in a program
+that also services a fast IRQ you would miss events. The right place is the
+main loop or a command interpreter. Being interrupted in the middle of a
+transaction is harmless, because CS stays low and the FPGA only advances on the
+SCK transitions.
 
-O driver não guarda estado. A palavra carrega canal, level e out juntos, e o
-frame de leitura não os devolve, por isso a FPGA não pode ser interrogada sobre
-a configuração em que está: cada chamada ao config declara os três campos, e
-lembrar-se deles entre chamadas é trabalho de quem chama.
+The driver keeps no state. The word carries channel, level and out together,
+and the readout frame does not give them back, so the FPGA cannot be asked
+which configuration it is in: every call to config states all three fields, and
+remembering them between calls is the caller's job.
 
-O start_aquisition serve só para arranque e testes. Nunca retorna, e escreve
-texto CSV, num ficheiro em MicroPython e na série ou no stdout nas outras duas.
-Num programa que mande binário pelo mesmo canal, o texto corrompe o fluxo. Para
-qualquer coisa a sério usa o config e o read_counters e escreve o teu loop.
+start_aquisition is for bring-up and testing only. It never returns, and it
+writes CSV text, to a file in MicroPython and to the serial port or stdout in
+the other two. In a program that sends binary over the same channel, the text
+corrupts the stream. For anything real, use config and read_counters and write
+your own loop.

@@ -79,13 +79,12 @@ class TmacDS:
         Takes the configuration to leave in place, because the word carries all
         three fields together.
         """
+        # One word is enough. The FPGA fires the reset on the falling edge of
+        # its internal reciving flag, which only rises when MOSI is high on an
+        # SCK edge, so a readout (MOSI held low throughout) never produces
+        # another one. The reset bit staying set in the word the FPGA keeps is
+        # harmless: exactly one reset per configuration transaction.
         self.config(channel, level, out_trigger, RESET)
-        # Clear bit 8 in the word the FPGA keeps. Without this the reset
-        # request stays armed, and a later transaction that starts a reception
-        # by accident would fire a second reset. This word fires nothing: the
-        # FPGA samples the bit when the reception ends, and by then this word
-        # has replaced the previous one.
-        self.config(channel, level, out_trigger, NO_RESET)
 
     def read_raw(self):
         """The 18 frame bytes as they arrive."""

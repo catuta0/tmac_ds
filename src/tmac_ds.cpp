@@ -58,14 +58,12 @@ void TmacDS::config(uint8_t channel, uint8_t level, TmacOut out,
 
 void TmacDS::reset(uint8_t channel, uint8_t level, TmacOut out)
 {
+    // One word is enough. The FPGA fires the reset on the falling edge of its
+    // internal reciving flag, which only rises when MOSI is high on an SCK
+    // edge, so a readout (MOSI held low throughout) never produces another
+    // one. The reset bit staying set in the word the FPGA keeps is harmless:
+    // exactly one reset per configuration transaction.
     config(channel, level, out, TMAC_RESET);
-
-    // Clear bit 8 in the word the FPGA keeps. Without this the reset request
-    // stays armed, and a later transaction that starts a reception by accident
-    // would fire a second reset. This word fires nothing: the FPGA samples the
-    // bit when the reception ends, and by then this word has replaced the
-    // previous one.
-    config(channel, level, out, TMAC_NO_RESET);
 }
 
 void TmacDS::readRaw(uint8_t *rx)

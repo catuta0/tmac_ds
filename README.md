@@ -4,43 +4,6 @@ Lê e configura o contador TMAC via SPI, em três versões que falam o mesmo
 protocolo: MicroPython (tmac_ds.py), Arduino IDE (src/) e C com o Pico SDK
 (c/). Cada uma instala-se e usa-se independentemente das outras.
 
-
-## Protocolo
-
-A palavra de configuração tem 10 bits:
-
-    [9]=1  [8]=reset  [7]=out  [6:4]=level  [3:0]=channel
-
-O bit 9 é o de arranque e vai sempre a 1. O bit 8 é o reset, que zera os 12
-contadores de canal, os dois de trigger e a base de tempo. O bit 7 escolhe o
-que sai no pino, 0 maioria e 1 adjacência, e só isso: os dois contadores de
-trigger correm sempre, qualquer que seja. O level vai de 0 a 7 e a maioria
-dispara com level+1 ou mais canais activos. O channel diz qual dos 12
-contadores de canal a leitura vai reportar.
-
-A palavra viaja alinhada à esquerda em dois bytes, ou seja deslocada seis bits
-para a esquerda, e os seis bits de enchimento têm de ir a zero, senão a FPGA lê
-um deles como o bit de arranque de outra palavra.
-
-A leitura devolve um frame de 18 bytes:
-
-    t1 | t2 | channel | ms | flags
-
-Os quatro primeiros campos são de 32 bits, big endian. As flags são dois bytes:
-
-    [15]=ovf t1  [14]=ovf t2  [13:2]=ovf channels  [1]=ovf time  [0]=1
-
-O bit 0 vem sempre a 1. Se vier a 0, perdeste o alinhamento de bytes e o resto
-do frame é lixo. A flag de um canal só é limpa na leitura em que esse canal
-está seleccionado; as dos triggers são limpas em todas as leituras, por isso
-quem quiser contagens contínuas tem de as acumular a cada canal.
-
-Configuração e leitura são sempre transacções separadas: a FPGA captura o frame
-enquanto o CS está em alto, logo uma palavra enviada dentro de uma leitura só
-governaria a seguinte. Durante a leitura o MOSI fica em baixo, porque um 1 ali
-seria lido como bit de arranque.
-
-
 ## Instalação
 
 MicroPython: com o mpremote ligado à placa, mpremote mip install
@@ -57,18 +20,6 @@ add_subdirectory(external/tmac_ds/c tmac_ds) ao CMakeLists.txt e tmac_ds ao
 target_link_libraries. O add_subdirectory já traz os include directories, basta
 incluir o tmac_ds.h.
 
-
-## Um só clone
-
-Se também desenvolves a biblioteca, uma cópia instalada por projecto significa
-editar numa e esquecer as outras. Em vez disso clona uma vez e põe links para
-esse clone onde cada projecto a espera, com ln -s, tanto na pasta de
-bibliotecas do Arduino como no external/ do projecto do Pico. O CMake e a
-procura de bibliotecas do Arduino seguem links, por isso os dois projectos
-compilam sempre o que está no clone, e um git pull ali chega aos dois. Um
-submódulo não serve para isto: deixa de funcionar se mudares a pasta do
-projecto de sítio, porque o seu .git aponta para um caminho dentro do
-repositório pai.
 
 
 ## API

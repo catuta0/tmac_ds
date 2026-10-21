@@ -54,17 +54,13 @@ void tmac_init_bb(uint sck, uint mosi, uint miso, uint cs, uint baudrate)
     gpio_put(cs,   1);
 }
 
-/* ================= the bus, both backends behind one door ================= */
+
 
 static inline void bb_delay(void)
 {
     if (bb_half) busy_wait_us(bb_half);
 }
 
-/* One byte, most significant bit first, SPI mode 0: the master puts MOSI out
-   while SCK is low, raises SCK (the FPGA samples MOSI and the master samples
-   MISO on that edge) and lowers it again (the FPGA advances its MISO mask on
-   the falling edge). */
 static uint8_t bb_xfer(uint8_t tx)
 {
     uint8_t rx = 0;
@@ -122,11 +118,7 @@ void tmac_config(int channel, int level, tmac_out_t out, tmac_reset_t reset)
 
 void tmac_reset(int channel, int level, tmac_out_t out)
 {
-    /* One word is enough. The FPGA fires the reset on the falling edge of its
-       internal reciving flag, which only rises when MOSI is high on an SCK
-       edge, so a readout (MOSI held low throughout) never produces another
-       one. The reset bit staying set in the word the FPGA keeps is harmless:
-       exactly one reset per configuration transaction. */
+
     tmac_config(channel, level, out, TMAC_RESET);
 }
 

@@ -23,6 +23,27 @@ seria lido como o bit de arranque de uma palavra de configuração.
 
 ---
 
+# Desenvolvimento: um só clone
+
+As secções abaixo descrevem como instalar a biblioteca para a usar. Se também
+a estás a desenvolver, uma cópia instalada por cada projecto significa editar
+numa e esquecer as outras. Em vez disso, um clone único e links para ele:
+
+```bash
+# o clone: o único sítio onde se edita, faz commit e push
+git clone https://github.com/catuta0/tmac_ds ~/Documents/GitHub/tmac_ds
+
+# o Arduino IDE
+ln -s ~/Documents/GitHub/tmac_ds ~/Documents/Arduino/libraries/tmac_ds
+
+# um projecto do Pico SDK
+ln -s ~/Documents/GitHub/tmac_ds o_teu_projecto/external/tmac_ds
+```
+
+Tanto o `add_subdirectory` do CMake como a procura de bibliotecas do Arduino
+seguem os links, por isso os dois projectos compilam sempre o que está no
+clone, e um `git pull` ali chega aos dois.
+
 # MicroPython
 
 ## Instalação
@@ -112,7 +133,8 @@ git clone https://github.com/catuta0/tmac_ds
 ```
 
 Ou, sem git: descarregar o zip do GitHub e usar **Sketch → Include Library →
-Add .ZIP Library**.
+Add .ZIP Library**. Se também desenvolves a biblioteca, usa o link
+de *Desenvolvimento: um só clone* em vez de um clone próprio aqui.
 
 Reinicia o IDE e o exemplo aparece em **File → Examples → tmac_ds →
 tmac_basic**.
@@ -204,6 +226,11 @@ E no teu `.c`:
 
 O `add_subdirectory` já traz os `include` directories, não precisas de caminhos
 relativos no `#include`.
+
+O submódulo serve para quem só consome a biblioteca. Se também a desenvolves,
+põe ali um link para o teu clone, como em *Desenvolvimento: um só clone*: um
+submódulo deixa de funcionar se mudares a pasta do projecto de sítio, porque o
+seu `.git` aponta para um caminho dentro do repositório pai.
 
 ## Uso
 

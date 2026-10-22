@@ -1,0 +1,25 @@
+set_io clki J3
+set_io -pullup yes rst K11
+
+set_io led1 M12
+set_io led2 R16
+
+set_io SCK B1
+set_io CS F5
+set_io MISO B2
+set_io MOSI C1
+
+set_io out E4
+
+set_io trg[0] J2
+set_io trg[1] H1
+set_io trg[2] G1
+set_io trg[3] J5
+set_io trg[4] H2
+set_io trg[5] G2
+set_io trg[6] F1
+set_io trg[7] F2
+set_io trg[8] E2
+set_io trg[9] D1
+set_io trg[10] D2
+set_io trg[11] C2
